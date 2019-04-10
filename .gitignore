@@ -44,6 +44,7 @@ guids_test
 install_manifest.txt
 qapitrace
 qubjson_test
+tags
 trace_parser_flags_test
 traces
 Testing
