@@ -8,6 +8,7 @@ include_directories (
     ${CMAKE_BINARY_DIR}/dispatch
     ${CMAKE_SOURCE_DIR}/dispatch
     ${CMAKE_SOURCE_DIR}/lib/image
+    ${CMAKE_SOURCE_DIR}/lib/json
     ${CMAKE_SOURCE_DIR}/lib/ubjson
     ${CMAKE_SOURCE_DIR}/thirdparty/dxerr
     ${CMAKE_SOURCE_DIR}/thirdparty/mhook/mhook-lib
@@ -41,7 +42,6 @@ if (WIN32)
 endif ()
 
 add_library (retrace_common STATIC
-    json.cpp
     process_name.hpp
     process_name.cpp
     retrace.cpp
@@ -56,6 +56,7 @@ add_library (retrace_common STATIC
 )
 target_link_libraries (retrace_common
     image
+    json
     common
     ${ZLIB_LIBRARIES}
     ${SNAPPY_LIBRARIES}
