@@ -16,6 +16,7 @@ endif ()
 
 include_directories (
     ${CMAKE_SOURCE_DIR}/lib/highlight
+    ${CMAKE_SOURCE_DIR}/lib/json
     ${CMAKE_SOURCE_DIR}/thirdparty
 )
 

@@ -82,6 +82,7 @@ usage(void)
         "    --arg-names[=BOOL]   dump argument names [default: yes]\n"
         "    --blobs              dump blobs into files\n"
         "    --multiline[=BOOL]   dump newline in strings literally [default: yes]\n"
+        "    --json               dump into json format\n"
         "\n"
     ;
 }
@@ -95,6 +96,7 @@ enum {
     ARG_NAMES_OPT,
     BLOBS_OPT,
     MULTILINE_OPT,
+    JSON_OPT,
 };
 
 const static char *
@@ -113,6 +115,7 @@ longOptions[] = {
     {"arg-names", optional_argument, 0, ARG_NAMES_OPT},
     {"blobs", no_argument, 0, BLOBS_OPT},
     {"multiline", optional_argument, 0, MULTILINE_OPT},
+    {"json", no_argument, 0, JSON_OPT},
     {0, 0, 0, 0}
 };
 
@@ -160,6 +163,7 @@ command(int argc, char *argv[])
     bool blobs = false;
     bool grep = false;
     std::regex grepRegex;
+    bool json = false;
 
     int opt;
     while ((opt = getopt_long(argc, argv, shortOptions, longOptions, NULL)) != -1) {
@@ -221,11 +225,20 @@ command(int argc, char *argv[])
         case BLOBS_OPT:
             blobs = true;
             break;
+        case JSON_OPT:
+            json = true;
+            break;
         default:
             std::cerr << "error: unexpected option `" << (char)opt << "`\n";
             usage();
             return 1;
         }
+    }
+
+    if (blobs && json) {
+        std::cerr << "error: both --blobs and --json specified\n";
+        usage();
+        return 1;
     }
 
     if (color == COLOR_OPTION_AUTO) {
@@ -245,6 +258,8 @@ command(int argc, char *argv[])
 
     if (blobs) {
         dumper = std::make_unique<BlobDumper>(std::cout, dumpFlags);
+    } else if (json) {
+        dumper = std::make_unique<trace::JSONDumper>(std::cout, dumpFlags);
     } else {
         dumper = std::make_unique<trace::Dumper>(std::cout, dumpFlags);
     }

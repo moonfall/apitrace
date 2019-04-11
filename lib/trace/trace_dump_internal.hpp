@@ -28,6 +28,7 @@
 
 #include "highlight.hpp"
 #include "trace_dump.hpp"
+#include "json.hpp"
 
 
 namespace trace {
@@ -50,6 +51,40 @@ protected:
 public:
     Dumper(std::ostream &_os, DumpFlags _flags);
     virtual ~Dumper();
+
+    virtual void visit(Null *) override;
+    virtual void visit(Bool *node) override;
+    virtual void visit(SInt *node) override;
+    virtual void visit(UInt *node) override;
+    virtual void visit(Float *node) override;
+    virtual void visit(Double *node) override;
+
+    template< typename C >
+    void visitString(const C *value);
+    virtual void visit(String *node) override;
+    virtual void visit(WString *node) override;
+    virtual void visit(Enum *node) override;
+    virtual void visit(Bitmask *bitmask) override;
+    virtual const char *
+    visitMembers(Struct *s, const char *sep = "");
+    virtual void visit(Struct *s) override;
+    virtual void visit(Array *array) override;
+    virtual void visit(Blob *blob) override;
+    virtual void visit(Pointer *p) override;
+    virtual void visit(Repr *r) override;
+    virtual void visit(StackFrame *frame);
+    virtual void visit(Backtrace & backtrace);
+    virtual void visit(Call *call);
+};
+
+class JSONDumper : public Dumper
+{
+protected:
+    JSONWriter writer;
+
+public:
+    JSONDumper(std::ostream &_os, DumpFlags _flags);
+    ~JSONDumper();
 
     virtual void visit(Null *) override;
     virtual void visit(Bool *node) override;

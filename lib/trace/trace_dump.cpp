@@ -27,6 +27,7 @@
 #include "trace_dump_internal.hpp"
 
 #include <limits>
+#include <sstream>
 
 #include <assert.h>
 #include <string.h>
@@ -318,6 +319,259 @@ void Dumper::visit(Call *call)
     }
 }
 
+
+JSONDumper::JSONDumper(std::ostream &_os, DumpFlags _flags) :
+    Dumper(_os, _flags),
+    writer(_os)
+{
+    writer.beginMember("calls");
+    writer.beginArray();
+}
+
+JSONDumper::~JSONDumper()
+{
+    writer.endArray();
+    writer.endMember();
+}
+
+void JSONDumper::visit(Null *) {
+    writer.writeNull();
+}
+
+void JSONDumper::visit(Bool *node) {
+    writer.writeBool(node->value);
+}
+
+void JSONDumper::visit(SInt *node) {
+    writer.writeInt(node->value);
+}
+
+void JSONDumper::visit(UInt *node) {
+    writer.writeInt(node->value);
+}
+
+void JSONDumper::visit(Float *node) {
+    writer.writeFloat(node->value);
+}
+
+void JSONDumper::visit(Double *node) {
+    writer.writeFloat(node->value);
+}
+
+template< typename C >
+void JSONDumper::visitString(const C *value) {
+    writer.writeString(value);
+}
+
+void JSONDumper::visit(String *node) {
+    writer.writeString(node->value);
+}
+
+void JSONDumper::visit(WString *node) {
+    assert(false);
+}
+
+void JSONDumper::visit(Enum *node) {
+    writer.beginObject();
+    const EnumValue *it = node->lookup();
+    if (it) {
+        writer.beginMember("name");
+        writer.writeString(it->name);
+        writer.endMember();
+    } else {
+        writer.beginMember("value");
+        writer.writeInt(node->value);
+        writer.endMember();
+    }
+    writer.endObject();
+}
+
+void JSONDumper::visit(Bitmask *bitmask) {
+    unsigned long long value = bitmask->value;
+    const BitmaskSig *sig = bitmask->sig;
+    bool first = true;
+    writer.beginArray();
+    for (const BitmaskFlag *it = sig->flags; it != sig->flags + sig->num_flags; ++it) {
+        if ((it->value && (value & it->value) == it->value) ||
+            (!it->value && value == 0)) {
+            writer.writeString(it->name);
+            value &= ~it->value;
+        }
+        if (value == 0) {
+            break;
+        }
+    }
+    if (value || first) {
+        std::stringstream s;
+        s << "0x" << std::hex << value << std::dec;
+        writer.writeString(s.str());
+    }
+    writer.endArray();
+}
+
+const char *
+JSONDumper::visitMembers(Struct *s, const char *sep) {
+    writer.beginObject();
+    for (unsigned i = 0; i < s->members.size(); ++i) {
+        const char *memberName = s->sig->member_names[i];
+        Value *memberValue = s->members[i];
+
+        if (!memberName || !*memberName) {
+            // Anonymous structure
+            Struct *memberStruct = memberValue->toStruct();
+            assert(memberStruct);
+            if (memberStruct) {
+                sep = visitMembers(memberStruct, sep);
+                continue;
+            }
+        }
+
+        writer.beginMember(memberName);
+        _visit(memberValue);
+        writer.endMember();
+        sep = ", ";
+    }
+    writer.endObject();
+    return sep;
+}
+
+void JSONDumper::visit(Struct *s) {
+    // Replace GUIDs with their symbolic name
+    // TODO: Move this to parsing, so it can be shared everywhere
+    if (s->members.size() == 4 &&
+        strcmp(s->sig->name, "GUID") == 0) {
+        GUID guid;
+        guid.Data1 = s->members[0]->toUInt();
+        guid.Data2 = s->members[1]->toUInt();
+        guid.Data3 = s->members[2]->toUInt();
+        Array *data4 = s->members[3]->toArray();
+        assert(data4);
+        assert(data4->values.size() == 8);
+        for (int i = 0; i < sizeof guid.Data4; ++i) {
+            guid.Data4[i] = data4->values[i]->toUInt();
+        }
+        const char *name = getGuidName(guid);
+        writer.writeString(name);
+        return;
+    }
+
+    visitMembers(s);
+}
+
+void JSONDumper::visit(Array *array) {
+    writer.beginArray();
+    for (auto & value : array->values) {
+        _visit(value);
+    }
+    writer.endArray();
+}
+
+void JSONDumper::visit(Blob *blob) {
+    writer.beginObject();
+    writer.beginMember("blob");
+    writer.writeInt(blob->size);
+    writer.endMember();
+    writer.endObject();
+}
+
+void JSONDumper::visit(Pointer *p) {
+    writer.beginObject();
+    writer.beginMember("pointer");
+    std::stringstream s;
+    s << "0x" << std::hex << p->value << std::dec;
+    writer.writeString(s.str());
+    writer.endMember();
+    writer.endObject();
+}
+
+void JSONDumper::visit(Repr *r) {
+    _visit(r->humanValue);
+}
+
+void JSONDumper::visit(StackFrame *frame) {
+    std::stringstream s;
+    frame->dump(s);
+    writer.writeString(s.str());
+}
+
+void JSONDumper::visit(Backtrace & backtrace) {
+    writer.beginArray();
+    for (auto & frame : backtrace) {
+        visit(frame);
+    }
+    writer.endArray();
+}
+
+void JSONDumper::visit(Call *call)
+{
+    CallFlags callFlags = call->flags;
+
+    writer.beginObject();
+
+    if (!(dumpFlags & DUMP_FLAG_NO_CALL_NO)) {
+        writer.beginMember("call");
+        writer.writeInt(call->no);
+        writer.endMember();
+    }
+    if (dumpFlags & DUMP_FLAG_THREAD_IDS) {
+        writer.beginMember("thread_id");
+        writer.writeInt(call->thread_id);
+        writer.endMember();
+    }
+
+    writer.beginMember("name");
+    writer.writeString(call->sig->name);
+    writer.endMember();
+
+    writer.beginMember("args");
+    writer.beginObject();
+    for (unsigned i = 0; i < call->args.size(); ++i) {
+        writer.beginMember(call->sig->arg_names[i]);
+        if (call->args[i].value) {
+            _visit(call->args[i].value);
+        } else {
+            writer.writeString("?");
+        }
+        writer.endMember();
+    }
+    writer.endObject();
+    writer.endMember();
+
+    if (call->ret) {
+        writer.beginMember("return");
+        _visit(call->ret);
+        writer.endMember();
+    }
+
+    if (callFlags & (CALL_FLAG_FAKE |
+                     CALL_FLAG_INCOMPLETE)) {
+        if (callFlags & CALL_FLAG_FAKE) {
+            writer.beginMember("fake");
+            writer.writeBool(true);
+            writer.endMember();
+        }
+        if (callFlags & CALL_FLAG_INCOMPLETE) {
+            writer.beginMember("incomplete");
+            writer.writeBool(true);
+            writer.endMember();
+        }
+    }
+
+    if (!(dumpFlags & DUMP_FLAG_NO_MULTILINE)) {
+        if (call->backtrace != NULL) {
+            writer.beginMember("backtrace");
+            visit(*call->backtrace);
+            writer.endMember();
+        }
+        if (callFlags & CALL_FLAG_END_FRAME) {
+            writer.beginMember("end_of_frame");
+            writer.writeBool(true);
+            writer.endMember();
+        }
+    }
+
+    writer.endObject();
+}
 
 void dump(Value *value, std::ostream &os, DumpFlags flags) {
     Dumper d(os, flags);
