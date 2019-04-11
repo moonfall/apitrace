@@ -118,6 +118,15 @@ escapeUnicodeString(std::ostream &os, const char *str) {
                    (c == '\\')) {
             // escape character
             os << '\\' << (unsigned char)c;
+        } else if (c == '\t') {
+            // escape character
+            os << "\\t";
+        } else if (c == '\r') {
+            // escape character
+            os << "\\r";
+        } else if (c == '\n') {
+            // escape character
+            os << "\\n";
         } else if ((c >= 0x20 && c <= 0x7e) ||
                     c == '\t' ||
                     c == '\r' ||
